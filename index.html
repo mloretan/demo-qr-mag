@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suivi de commande</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff; --bg2: #f5f4f0; --bg3: #eceae4;
+    --text: #1a1a18; --text2: #6b6a64; --text3: #9c9a93;
+    --border: rgba(0,0,0,0.1); --border2: rgba(0,0,0,0.18);
+    --teal-bg: #E1F5EE; --teal-text: #085041; --teal-border: #5DCAA5;
+    --amber-bg: #FAEEDA; --amber-text: #633806; --amber-border: #EF9F27;
+    --red-bg: #FCEBEB; --red-text: #791F1F; --red-border: #F09595;
+    --radius: 12px; --radius-sm: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1e1e1b; --bg2: #28281f; --bg3: #313128;
+      --text: #e8e6de; --text2: #a8a69f; --text3: #6b6a64;
+      --border: rgba(255,255,255,0.1); --border2: rgba(255,255,255,0.18);
+      --teal-bg: #04342C; --teal-text: #9FE1CB;
+      --amber-bg: #412402; --amber-text: #FAC775;
+      --red-bg: #501313; --red-text: #F7C1C1;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.6; }
+
+  .app { max-width: 640px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
+
+  /* Header */
+  .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+  .store-name { font-size: 13px; color: var(--text2); }
+  .refresh-badge { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); background: var(--bg2); border: 0.5px solid var(--border); border-radius: 20px; padding: 4px 10px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--teal-border); }
+  .dot.loading { background: var(--amber-border); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* Search bar */
+  .search-row { display: flex; gap: 8px; margin-bottom: 1.25rem; }
+  .search-row input { flex: 1; height: 40px; padding: 0 12px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-size: 14px; }
+  .search-row input:focus { outline: none; border-color: var(--teal-border); box-shadow: 0 0 0 2px rgba(29,158,117,0.15); }
+  .btn { height: 40px; padding: 0 18px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-size: 14px; cursor: pointer; transition: background .15s; }
+  .btn:hover { background: var(--bg2); }
+  .btn:active { transform: scale(.98); }
+
+  /* Status badge */
+  .badge { display: inline-block; font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 20px; }
+  .badge.confirmed { background: var(--teal-bg); color: var(--teal-text); }
+  .badge.pending    { background: var(--amber-bg); color: var(--amber-text); }
+  .badge.cancelled  { background: var(--red-bg); color: var(--red-text); }
+
+  /* Order card */
+  .order-card { border: 0.5px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 1rem; }
+  .card-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; border-bottom: 0.5px solid var(--border); }
+  .card-header h2 { font-size: 16px; font-weight: 500; }
+  .section { padding: .875rem 1.25rem; border-bottom: 0.5px solid var(--border); }
+  .section:last-child { border-bottom: none; }
+  .section-label { font-size: 12px; color: var(--text2); margin-bottom: .625rem; font-weight: 500; letter-spacing: .02em; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+  .info-item { display: flex; flex-direction: column; gap: 2px; }
+  .info-key { font-size: 12px; color: var(--text2); }
+  .info-val { font-size: 14px; }
+  .info-item.full { grid-column: 1/-1; }
+
+  /* Articles table */
+  .art-table { width: 100%; font-size: 13px; border-collapse: collapse; }
+  .art-table th { text-align: left; color: var(--text2); font-weight: 400; padding: 3px 0; border-bottom: 0.5px solid var(--border); }
+  .art-table td { padding: 7px 0; border-bottom: 0.5px solid var(--border); vertical-align: top; }
+  .art-table tr:last-child td { border-bottom: none; }
+  .art-table .r { text-align: right; }
+  .art-ref { color: var(--text3); font-size: 12px; }
+
+  /* Totals */
+  .totals { background: var(--bg2); padding: .875rem 1.25rem; }
+  .tot-row { display: flex; justify-content: space-between; font-size: 14px; padding: 2px 0; color: var(--text2); }
+  .tot-row.main { font-size: 15px; font-weight: 500; color: var(--text); border-top: 0.5px solid var(--border2); padding-top: 8px; margin-top: 6px; }
+
+  /* Codes section */
+  .codes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+  .code-card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 1.25rem; display: flex; flex-direction: column; align-items: center; gap: .75rem; }
+  .code-card h3 { font-size: 13px; font-weight: 500; color: var(--text2); align-self: flex-start; }
+  .code-card .sub { font-size: 11px; color: var(--text3); text-align: center; }
+  #qr-container { background: white; padding: 8px; border-radius: 6px; }
+  #qr-container canvas, #qr-container img { display: block; }
+  #barcode-container svg, #barcode-container canvas { max-width: 100%; }
+
+  /* Error / empty */
+  .msg-box { padding: 1rem 1.25rem; border-radius: var(--radius); font-size: 14px; margin-bottom: 1rem; }
+  .msg-box.error { background: var(--red-bg); color: var(--red-text); border: 0.5px solid var(--red-border); }
+  .msg-box.info { background: var(--bg2); color: var(--text2); border: 0.5px solid var(--border); text-align: center; }
+
+  /* Config panel */
+  .cfg-toggle { font-size: 13px; color: var(--text2); cursor: pointer; display: flex; align-items: center; gap: 5px; margin-bottom: .75rem; }
+  .cfg-toggle:hover { color: var(--text); }
+  .cfg-panel { display: none; background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-sm); padding: 1rem; margin-bottom: 1rem; }
+  .cfg-panel.open { display: block; }
+  .cfg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field.full { grid-column: 1/-1; }
+  .field label { font-size: 12px; color: var(--text2); }
+  .field input, .field select { height: 34px; padding: 0 10px; border: 0.5px solid var(--border2); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 13px; }
+  .field select { cursor: pointer; }
+  .cfg-note { font-size: 12px; color: var(--text3); margin-top: 8px; background: var(--amber-bg); color: var(--amber-text); border-radius: 6px; padding: 6px 10px; }
+
+  @media (max-width: 480px) {
+    .codes-grid { grid-template-columns: 1fr; }
+    .info-grid { grid-template-columns: 1fr; }
+    .cfg-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="top-bar">
+    <span class="store-name">Suivi de commande</span>
+    <div class="refresh-badge">
+      <span class="dot" id="status-dot"></span>
+      <span id="status-text">En attente</span>
+    </div>
+  </div>
+
+  <!-- Barre de recherche -->
+  <div class="search-row">
+    <input type="text" id="bc-input" placeholder="Numéro de bon de commande…" />
+    <button class="btn" onclick="loadOrder()">Rechercher</button>
+  </div>
+
+  <!-- Config panel -->
+  <div class="cfg-toggle" onclick="toggleCfg()">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3a1 1 0 100 2 1 1 0 000-2zm0 5a1 1 0 100 2 1 1 0 000-2zm0 5a1 1 0 100 2 1 1 0 000-2z"/></svg>
+    <span id="cfg-label">Configuration</span>
+  </div>
+  <div class="cfg-panel" id="cfg-panel">
+    <div class="cfg-grid">
+      <div class="field full">
+        <label>URL du BFF proxy (recommandé)</label>
+        <input type="text" id="cfg-bff" placeholder="https://votre-bff.vercel.app/api/order/{id}" value="https://votre-bff.vercel.app/api/order/{id}"/>
+      </div>
+      <div class="field">
+        <label>Mode d'appel</label>
+        <select id="cfg-mode" onchange="onModeChange()">
+          <option value="mock">Démonstration</option>
+          <option value="bff">Via BFF (recommandé)</option>
+          <option value="direct">Direct API (non sécurisé)</option>
+        </select>
+      </div>
+      <div class="field" id="field-token" style="display:none">
+        <label>Token (direct uniquement)</label>
+        <input type="password" id="cfg-token" placeholder="Bearer xxxxxxxx"/>
+      </div>
+      <div class="field">
+        <label>Rafraîchissement</label>
+        <select id="cfg-refresh">
+          <option value="0">Désactivé</option>
+          <option value="15">Toutes les 15 s</option>
+          <option value="30" selected>Toutes les 30 s</option>
+          <option value="60">Toutes les 60 s</option>
+        </select>
+      </div>
+    </div>
+    <div class="cfg-note">
+      En mode BFF, vos credentials API restent côté serveur — jamais exposés dans le navigateur.
+      Déployez le proxy Node.js fourni sur Vercel, Render ou un VPS.
+    </div>
+  </div>
+
+  <!-- Zone résultat -->
+  <div id="result-area">
+    <div class="msg-box info">Saisissez un numéro de bon ou scannez le QR code généré par le vendeur.</div>
+  </div>
+
+</div>
+
+<script>
+// ─── Données de démonstration ──────────────────────────────────────────────
+const MOCK = {
+  "BC-2024-00145": {
+    id:"BC-2024-00145", status:"confirmed", date:"28 mars 2025",
+    magasin:"Promo Store Morges", vendeur:"Sophie M.",
+    client:{ nom:"Martin Dupont", email:"m.dupont@email.com", tel:"079 123 45 67", adresse:"Rue du Lac 12, 1110 Morges" },
+    articles:[
+      { ref:"REF-001", designation:"Canapé 3 places tissu gris", qte:1, pu:1290.00 },
+      { ref:"REF-002", designation:"Table basse chêne naturel",   qte:1, pu: 349.00 },
+      { ref:"REF-003", designation:"Coussin décoratif 45×45",     qte:4, pu:  29.90 }
+    ], remise:5, tva:8.1, livraison:50.00
+  },
+  "BC-2024-00088": {
+    id:"BC-2024-00088", status:"pending", date:"15 mars 2025",
+    magasin:"Promo Store Lausanne", vendeur:"Jean-Luc P.",
+    client:{ nom:"Isabelle Rochat", email:"i.rochat@email.com", tel:"021 987 65 43", adresse:"Avenue de la Gare 4, 1003 Lausanne" },
+    articles:[
+      { ref:"REF-051", designation:"Lit 160×200 avec sommier",   qte:1, pu:890.00 },
+      { ref:"REF-052", designation:"Matelas mémoire de forme",   qte:1, pu:650.00 }
+    ], remise:0, tva:8.1, livraison:80.00
+  }
+};
+
+const STATUS = { confirmed:"Confirmée", pending:"En attente", cancelled:"Annulée" };
+let refreshTimer = null;
+let cfgOpen = false;
+let currentBc = null;
+
+// ─── Init depuis URL ───────────────────────────────────────────────────────
+function init() {
+  const params = new URLSearchParams(location.search);
+  const bc = params.get("bc") || params.get("BC") || params.get("commande");
+  if (bc) {
+    document.getElementById("bc-input").value = bc;
+    loadOrder();
+  }
+}
+
+// ─── Config panel ──────────────────────────────────────────────────────────
+function toggleCfg() {
+  cfgOpen = !cfgOpen;
+  document.getElementById("cfg-panel").classList.toggle("open", cfgOpen);
+  document.getElementById("cfg-label").textContent = cfgOpen ? "Masquer la configuration" : "Configuration";
+}
+function onModeChange() {
+  const m = document.getElementById("cfg-mode").value;
+  document.getElementById("field-token").style.display = m === "direct" ? "" : "none";
+}
+
+// ─── Appel API ─────────────────────────────────────────────────────────────
+async function fetchOrder(id) {
+  const mode = document.getElementById("cfg-mode").value;
+
+  if (mode === "mock") {
+    await new Promise(r => setTimeout(r, 600));
+    const d = MOCK[id.toUpperCase()];
+    if (!d) throw new Error("Bon introuvable (démo).");
+    return d;
+  }
+
+  if (mode === "bff") {
+    const url = document.getElementById("cfg-bff").value.replace("{id}", encodeURIComponent(id));
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("BFF : " + res.status + " " + res.statusText);
+    return res.json();
+  }
+
+  // mode direct (non recommandé)
+  const baseUrl = document.getElementById("cfg-bff").value.replace("{id}", encodeURIComponent(id));
+  const token   = document.getElementById("cfg-token").value;
+  const headers = { "Content-Type":"application/json" };
+  if (token) headers["Authorization"] = token;
+  const res = await fetch(baseUrl, { headers });
+  if (!res.ok) throw new Error("API : " + res.status + " " + res.statusText);
+  return res.json();
+}
+
+// ─── Chargement + refresh ──────────────────────────────────────────────────
+async function loadOrder() {
+  const bc = document.getElementById("bc-input").value.trim();
+  if (!bc) return;
+  currentBc = bc;
+  setStatus("loading", "Chargement…");
+  try {
+    const data = await fetchOrder(bc);
+    render(data);
+    setStatus("ok", "À jour");
+    scheduleRefresh();
+  } catch(e) {
+    showError(e.message);
+    setStatus("error", "Erreur");
+  }
+}
+
+function scheduleRefresh() {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  const s = parseInt(document.getElementById("cfg-refresh").value, 10);
+  if (!s || !currentBc) return;
+  refreshTimer = setTimeout(async () => {
+    setStatus("loading", "Rafraîchissement…");
+    try {
+      const data = await fetchOrder(currentBc);
+      render(data);
+      setStatus("ok", "À jour");
+    } catch(e) {}
+    scheduleRefresh();
+  }, s * 1000);
+}
+
+// ─── UI helpers ───────────────────────────────────────────────────────────
+function setStatus(state, txt) {
+  const d = document.getElementById("status-dot");
+  const t = document.getElementById("status-text");
+  d.className = "dot" + (state === "loading" ? " loading" : "");
+  t.textContent = txt;
+}
+function showError(msg) {
+  document.getElementById("result-area").innerHTML =
+    `<div class="msg-box error">Erreur : ${msg}</div>`;
+}
+function fmt(n) {
+  return Number(n).toLocaleString("fr-CH", { minimumFractionDigits:2, maximumFractionDigits:2 });
+}
+
+// ─── Rendu principal ───────────────────────────────────────────────────────
+function render(o) {
+  const arts = o.articles || [];
+  const sous  = arts.reduce((s,a) => s + a.qte * a.pu, 0);
+  const remMt = sous * ((o.remise||0) / 100);
+  const aprem = sous - remMt;
+  const tvaMt = aprem * ((o.tva||0) / 100);
+  const livr  = o.livraison || 0;
+  const total = aprem + tvaMt + livr;
+
+  const rows = arts.map(a => `
+    <tr>
+      <td><span class="art-ref">${a.ref}</span><br>${a.designation}</td>
+      <td class="r">${a.qte}</td>
+      <td class="r">CHF ${fmt(a.pu)}</td>
+      <td class="r">CHF ${fmt(a.qte * a.pu)}</td>
+    </tr>`).join("");
+
+  let totHTML = `<div class="tot-row"><span>Sous-total</span><span>CHF ${fmt(sous)}</span></div>`;
+  if (o.remise > 0) totHTML += `<div class="tot-row"><span>Remise (${o.remise}%)</span><span>− CHF ${fmt(remMt)}</span></div>`;
+  totHTML += `<div class="tot-row"><span>TVA (${o.tva}%)</span><span>CHF ${fmt(tvaMt)}</span></div>`;
+  if (livr > 0) totHTML += `<div class="tot-row"><span>Livraison</span><span>CHF ${fmt(livr)}</span></div>`;
+  totHTML += `<div class="tot-row main"><span>Total</span><span>CHF ${fmt(total)}</span></div>`;
+
+  // URL de l'app pour QR code (conserve le paramètre bc)
+  const appUrl = location.origin + location.pathname + "?bc=" + encodeURIComponent(o.id);
+
+  document.getElementById("result-area").innerHTML = `
+    <!-- Codes d'identification -->
+    <div class="codes-grid">
+      <div class="code-card">
+        <h3>QR code</h3>
+        <div id="qr-container"></div>
+        <span class="sub">Scannez pour ouvrir ce bon sur votre smartphone</span>
+      </div>
+      <div class="code-card">
+        <h3>Code-barres caisse</h3>
+        <div id="barcode-container"><svg id="bc-svg"></svg></div>
+        <span class="sub">Scannez en caisse pour payer</span>
+      </div>
+    </div>
+
+    <!-- Détail commande -->
+    <div class="order-card">
+      <div class="card-header">
+        <h2>Commande ${o.id}</h2>
+        <span class="badge ${o.status||'pending'}">${STATUS[o.status]||o.status}</span>
+      </div>
+
+      <div class="section">
+        <div class="section-label">Informations générales</div>
+        <div class="info-grid">
+          <div class="info-item"><span class="info-key">Date</span><span class="info-val">${o.date}</span></div>
+          <div class="info-item"><span class="info-key">Magasin</span><span class="info-val">${o.magasin}</span></div>
+          <div class="info-item"><span class="info-key">Vendeur</span><span class="info-val">${o.vendeur}</span></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-label">Client</div>
+        <div class="info-grid">
+          <div class="info-item"><span class="info-key">Nom</span><span class="info-val">${o.client.nom}</span></div>
+          <div class="info-item"><span class="info-key">Téléphone</span><span class="info-val">${o.client.tel}</span></div>
+          <div class="info-item full"><span class="info-key">Email</span><span class="info-val">${o.client.email}</span></div>
+          <div class="info-item full"><span class="info-key">Adresse</span><span class="info-val">${o.client.adresse}</span></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-label">Articles</div>
+        <table class="art-table">
+          <thead><tr>
+            <th>Désignation</th>
+            <th class="r" style="width:36px">Qté</th>
+            <th class="r" style="width:86px">P.U.</th>
+            <th class="r" style="width:86px">Total HT</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+
+      <div class="totals">${totHTML}</div>
+    </div>`;
+
+  // Génération QR code
+  new QRCode(document.getElementById("qr-container"), {
+    text: appUrl, width: 148, height: 148, correctLevel: QRCode.CorrectLevel.M
+  });
+
+  // Génération code 128
+  JsBarcode("#bc-svg", o.id, {
+    format: "CODE128", lineColor: getComputedStyle(document.body).getPropertyValue('--text') || "#000",
+    width: 2, height: 64, displayValue: true, fontSize: 11, margin: 6
+  });
+}
+
+// ─── Démarrage ─────────────────────────────────────────────────────────────
+document.getElementById("bc-input").addEventListener("keydown", e => { if(e.key==="Enter") loadOrder(); });
+init();
+</script>
+</body>
+</html>
